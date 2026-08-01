@@ -1,13 +1,6 @@
-import React, { useEffect, useState } from "react";
-import {
-  format,
-  eachDayOfInterval,
-  addDays,
-  addWeeks,
-  subDays,
-} from "date-fns";
+import React, { useMemo, useState } from "react";
+import { format } from "date-fns";
 import "react-calendar/dist/Calendar.css";
-import { Period } from "../../hooks/usePeriods"; // Assuming Period is a type that you already use for the periods
 import Calendar from "react-calendar";
 import {
   Box,
@@ -18,118 +11,70 @@ import {
   DialogContent,
   DialogTitle,
   Button,
+  Snackbar,
   useTheme,
 } from "@mui/material";
-
-interface CustomDate {
-  date: Date;
-  emoji?: string;
-  label?: string;
-}
+import { usePeriodContext } from "../../context/PeriodContext";
+import { generateCustomDates } from "../../utils/periodMath";
 
 type ValuePiece = Date | null;
 type Value = ValuePiece | [ValuePiece, ValuePiece];
 
-interface LocalPeriod {
-  duration: number; // Regl süresi (gün)
-  startDate: string; // Regl başlangıç tarihi (YYYY-MM-DD)
-}
+const MOOD_OPTIONS = [
+  { emoji: "😊", label: "Mutlu" },
+  { emoji: "😢", label: "Üzgün" },
+  { emoji: "😡", label: "Sinirli" },
+  { emoji: "😴", label: "Yorgun" },
+];
 
-export const PeriodCalendar: React.FC<{ period: LocalPeriod | null }> = ({
-  period,
-}) => {
-  const [value, onChange] = useState<Value>(new Date()); // Seçilen tarih
-  const [customDates, setCustomDates] = useState<CustomDate[]>([]); // Özel günler
-  const [open, setOpen] = useState(false); // Dialog görünürlüğü
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null); // Seçilen tarih
+export const PeriodCalendar: React.FC = () => {
   const theme = useTheme();
+  const {
+    latestPeriod,
+    averageCycleLength,
+    moods,
+    addPeriodStart,
+    endPeriod,
+    addMood,
+  } = usePeriodContext();
 
-  useEffect(() => {
-    if (period) {
-      const newCustomDates = generateCustomDates(period);
-      setCustomDates(newCustomDates);
-    }
-  }, [period]);
+  const [value, onChange] = useState<Value>(new Date());
+  const [open, setOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const generateCustomDates = (period: LocalPeriod): CustomDate[] => {
-    const { duration, startDate } = period;
-    const cycleDuration = 28; // Regl döngüsü uzunluğu (28 gün)
-    const start = new Date(startDate);
-    let newCustomDates: CustomDate[] = [];
+  const customDates = useMemo(() => {
+    if (!latestPeriod) return [];
+    return generateCustomDates(
+      new Date(latestPeriod.startDate),
+      latestPeriod.duration,
+      averageCycleLength
+    );
+  }, [latestPeriod, averageCycleLength]);
 
-    // İlk regl dönemi günleri
-    newCustomDates = [
-      ...newCustomDates,
-      ...getPeriodDays(start, duration),
-      ...getOvulationAndFertilePeriod(start, cycleDuration),
-    ];
-
-    // Gelecek 12 döngüyü hesapla
-    for (let i = 1; i <= 12; i++) {
-      const nextCycleStart = addWeeks(start, i * (cycleDuration / 7));
-      newCustomDates = [
-        ...newCustomDates,
-        ...getPeriodDays(nextCycleStart, duration),
-        ...getOvulationAndFertilePeriod(nextCycleStart, cycleDuration),
-      ];
-    }
-
-    return newCustomDates;
-  };
-
-  const getPeriodDays = (start: Date, duration: number): CustomDate[] => {
-    const periodDays = eachDayOfInterval({
-      start,
-      end: addDays(start, duration - 1),
-    });
-
-    return periodDays.map((date) => ({
-      date,
-      emoji: "🩸",
-      label: "Regl Dönemi",
-    }));
-  };
-
-  const getOvulationAndFertilePeriod = (
-    start: Date,
-    cycleDuration: number
-  ): CustomDate[] => {
-    const firstOvulationDay = addDays(start, cycleDuration - 12);
-    const firstFertileStart = subDays(firstOvulationDay, 4);
-    const firstFertileEnd = firstOvulationDay;
-
-    const fertileDays = eachDayOfInterval({
-      start: firstFertileStart,
-      end: firstFertileEnd,
-    });
-
-    let customDates: CustomDate[] = [];
-    customDates.push({
-      date: firstOvulationDay,
-      emoji: "🥚",
-      label: "Yumurtlama Günü",
-    });
-
-    customDates = [
-      ...customDates,
-      ...fertileDays.map((date) => ({
-        date,
-        emoji: "💗",
-        label: "Doğurgan Dönem",
-      })),
-    ];
-
-    return customDates;
-  };
+  const selectedDateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
+  const selectedMood = moods.find((m) => m.date === selectedDateKey)?.mood;
 
   const renderTileContent = ({ date }: { date: Date }) => {
+    const dateKey = format(date, "yyyy-MM-dd");
     const customDate = customDates.find(
-      (d) => format(d.date, "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
+      (d) => format(d.date, "yyyy-MM-dd") === dateKey
     );
+    const moodEntry = moods.find((m) => m.date === dateKey);
+
     if (customDate) {
       return (
         <Tooltip title={customDate.label}>
-          <span>{customDate.emoji}</span>
+          <span aria-label={customDate.label}>{customDate.emoji}</span>
+        </Tooltip>
+      );
+    }
+    if (moodEntry) {
+      return (
+        <Tooltip title={`Mod: ${moodEntry.mood}`}>
+          <span aria-label={`Mod: ${moodEntry.mood}`}>
+            {MOOD_OPTIONS.find((m) => m.label === moodEntry.mood)?.emoji}
+          </span>
         </Tooltip>
       );
     }
@@ -146,13 +91,34 @@ export const PeriodCalendar: React.FC<{ period: LocalPeriod | null }> = ({
     setSelectedDate(null);
   };
 
+  const handlePeriodStart = () => {
+    if (!selectedDateKey) return;
+    addPeriodStart(selectedDateKey, latestPeriod?.duration ?? 5);
+    setToastMessage("Regl başlangıcı kaydedildi");
+    handleDialogClose();
+  };
+
+  const handlePeriodEnd = () => {
+    if (!selectedDateKey) return;
+    endPeriod(selectedDateKey);
+    setToastMessage("Regl bitişi kaydedildi");
+    handleDialogClose();
+  };
+
+  const handleMoodSelect = (mood: string) => {
+    if (!selectedDateKey) return;
+    addMood(selectedDateKey, mood);
+    setToastMessage("Mod kaydedildi");
+    handleDialogClose();
+  };
+
   return (
     <Stack>
       <Calendar
-        onChange={(value) => {
-          onChange(value);
-          if (value && !Array.isArray(value)) {
-            handleDateClick(value);
+        onChange={(newValue) => {
+          onChange(newValue);
+          if (newValue && !Array.isArray(newValue)) {
+            handleDateClick(newValue);
           }
         }}
         value={value}
@@ -170,71 +136,41 @@ export const PeriodCalendar: React.FC<{ period: LocalPeriod | null }> = ({
             variant="outlined"
             color="primary"
             sx={{ marginRight: 2, marginTop: 2 }}
+            onClick={handlePeriodStart}
           >
             Regl Oldum
           </Button>
-          <Button variant="outlined" color="secondary" sx={{ marginTop: 2 }}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            sx={{ marginTop: 2 }}
+            onClick={handlePeriodEnd}
+            disabled={!latestPeriod}
+          >
             Regl Bitişi
           </Button>
           <Box sx={{ marginTop: 4 }}>
             <p>Modunuzu seçin:</p>
             <Stack direction="row" spacing={2} sx={{ marginTop: 2 }}>
-              <Button
-                variant="outlined"
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  padding: 2,
-                }}
-              >
-                😊
-                <span style={{ fontSize: "12px", marginTop: "4px" }}>
-                  Mutlu
-                </span>
-              </Button>
-              <Button
-                variant="outlined"
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  padding: 2,
-                }}
-              >
-                😢
-                <span style={{ fontSize: "12px", marginTop: "4px" }}>
-                  Üzgün
-                </span>
-              </Button>
-              <Button
-                variant="outlined"
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  padding: 2,
-                }}
-              >
-                😡
-                <span style={{ fontSize: "12px", marginTop: "4px" }}>
-                  Sinirli
-                </span>
-              </Button>
-              <Button
-                variant="outlined"
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  padding: 2,
-                }}
-              >
-                😴
-                <span style={{ fontSize: "12px", marginTop: "4px" }}>
-                  Yorgun
-                </span>
-              </Button>
+              {MOOD_OPTIONS.map(({ emoji, label }) => (
+                <Button
+                  key={label}
+                  variant={selectedMood === label ? "contained" : "outlined"}
+                  aria-label={label}
+                  onClick={() => handleMoodSelect(label)}
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    padding: 2,
+                  }}
+                >
+                  {emoji}
+                  <span style={{ fontSize: "12px", marginTop: "4px" }}>
+                    {label}
+                  </span>
+                </Button>
+              ))}
             </Stack>
           </Box>
         </DialogContent>
@@ -242,6 +178,13 @@ export const PeriodCalendar: React.FC<{ period: LocalPeriod | null }> = ({
           <Button onClick={handleDialogClose}>Kapat</Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={!!toastMessage}
+        autoHideDuration={2500}
+        onClose={() => setToastMessage(null)}
+        message={toastMessage}
+      />
 
       <style>{`
         .react-calendar {

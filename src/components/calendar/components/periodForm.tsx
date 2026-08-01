@@ -11,29 +11,42 @@ import {
 } from "@mui/material";
 import Dialog from "@mui/material/Dialog";
 import { useForm, Controller } from "react-hook-form";
-import { usePeriods, Period } from "../../../hooks/usePeriods";
+import { usePeriodContext } from "../../../context/PeriodContext";
+
+interface PeriodFormValues {
+  duration: number;
+  startDate: string;
+}
+
+const MIN_DURATION = 3;
+const MAX_DURATION = 10;
+const today = () => format(new Date());
+
+function format(date: Date) {
+  return date.toISOString().split("T")[0];
+}
 
 export const PeriodForm: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const { period, setNewPeriod } = usePeriods();
+  const { latestPeriod, addPeriodStart } = usePeriodContext();
   const {
     register,
     handleSubmit,
     control,
     reset,
     formState: { errors, isDirty },
-  } = useForm<Period>();
+  } = useForm<PeriodFormValues>();
 
   useEffect(() => {
-    if (!period) {
+    if (!latestPeriod) {
       setOpen(true);
     }
-  }, [period]);
+  }, [latestPeriod]);
 
   const handleClose = () => setOpen(false);
 
-  const onSubmit = (data: Period) => {
-    setNewPeriod(data);
+  const onSubmit = (data: PeriodFormValues) => {
+    addPeriodStart(data.startDate, data.duration);
     reset();
     setOpen(false);
   };
@@ -54,24 +67,24 @@ export const PeriodForm: React.FC = () => {
         >
           <Box>
             <Typography variant="subtitle1" gutterBottom>
-              Regl Kaç Gün Sürüyor? (3-10 gün)
+              Regl Kaç Gün Sürüyor? ({MIN_DURATION}-{MAX_DURATION} gün)
             </Typography>
             <Controller
               name="duration"
               control={control}
-              defaultValue={period?.duration || 5}
+              defaultValue={latestPeriod?.duration || 5}
               rules={{
                 required: "Regl süresi gereklidir",
                 validate: (value) =>
-                  (value >= 3 && value <= 10) ||
-                  "Süre 3 ile 10 gün arasında olmalıdır",
+                  (value >= MIN_DURATION && value <= MAX_DURATION) ||
+                  `Süre ${MIN_DURATION} ile ${MAX_DURATION} gün arasında olmalıdır`,
               }}
               render={({ field }) => (
                 <Slider
                   {...field}
                   valueLabelDisplay="auto"
-                  min={3}
-                  max={10}
+                  min={MIN_DURATION}
+                  max={MAX_DURATION}
                   step={1}
                   marks
                 />
@@ -88,11 +101,28 @@ export const PeriodForm: React.FC = () => {
             label="Başlangıç Tarihi"
             type="date"
             fullWidth
-            defaultValue={period?.startDate || ""}
+            defaultValue={latestPeriod?.startDate || ""}
             {...register("startDate", {
               required: "Başlangıç tarihi gereklidir",
+              validate: (value) => {
+                if (!value || Number.isNaN(new Date(value).getTime())) {
+                  return "Geçerli bir tarih giriniz";
+                }
+                if (value > today()) {
+                  return "Gelecekte bir tarih seçilemez";
+                }
+                const oneYearAgo = new Date();
+                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                if (new Date(value) < oneYearAgo) {
+                  return "Tarih son 1 yıl içinde olmalıdır";
+                }
+                return true;
+              },
             })}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              htmlInput: { max: today() },
+              inputLabel: { shrink: true },
+            }}
             error={!!errors.startDate}
             helperText={errors.startDate?.message}
           />

@@ -2,8 +2,10 @@ import { useState } from "react";
 import { ThemeProvider, CssBaseline } from "@mui/material";
 import { lightTheme, darkTheme } from "./theme";
 import { Layout } from "./components/layout/Layout";
+import { PeriodProvider } from "./context/PeriodContext";
 import "./index.css";
 import Home from "./pages/Home";
+
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false); // Varsayılan light theme
 
@@ -14,14 +16,13 @@ function App() {
   return (
     <ThemeProvider theme={isDarkMode ? darkTheme : lightTheme}>
       <CssBaseline />
-
-      <Layout isDarkMode={isDarkMode} handleThemeChange={handleThemeChange}>
-        <Home />
-      </Layout>
+      <PeriodProvider>
+        <Layout isDarkMode={isDarkMode} handleThemeChange={handleThemeChange}>
+          <Home />
+        </Layout>
+      </PeriodProvider>
     </ThemeProvider>
   );
 }
 
 export default App;
-
-//TODO moda göre müzik seçebildiğimiz bir alan yapalım 4 bölmeli olsun yuvarlak disk şeklinde
